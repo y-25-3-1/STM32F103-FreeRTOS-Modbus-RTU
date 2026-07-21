@@ -1,0 +1,49 @@
+# STM32CubeIDE build outputs
+Debug/
+Release/
+build/
+Build/
+Objects/
+Listings/
+
+# Compiled files
+*.o
+*.obj
+*.d
+*.su
+*.cyclo
+*.map
+*.list
+*.lst
+*.elf
+*.axf
+*.bin
+*.hex
+*.srec
+*.out
+
+# Temporary and log files
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+~$*
+
+# IDE and OS-generated files
+.metadata/
+RemoteSystemsTempFiles/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local launch/debug files
+*.launch
+
+# Keep STM32CubeIDE project configuration
+!.project
+!.cproject
+!.mxproject
+!.settings/
+!*.ioc
