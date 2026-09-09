@@ -1,49 +1,106 @@
-# STM32F103 FreeRTOS Modbus RTU 从机
+# STM32F103 FreeRTOS Modbus RTU Slave
 
-基于 STM32F103C8T6、FreeRTOS 和 MAX3485 的 Modbus RTU 工业通信终端示例。
+![MCU](https://img.shields.io/badge/MCU-STM32F103C8T6-03234B)
+![RTOS](https://img.shields.io/badge/RTOS-FreeRTOS-00A654)
+![Protocol](https://img.shields.io/badge/Protocol-Modbus%20RTU-blue)
+![Bus](https://img.shields.io/badge/Bus-RS485-orange)
+![Language](https://img.shields.io/badge/Language-C-A8B9CC)
 
-项目通过 RS485 总线实现 Modbus RTU 从机通信，支持读取保持寄存器、写单个保持寄存器、标准异常响应、动态运行数据统计及 PC13 LED 远程控制。
+A compact industrial-communication demo built with **STM32F103C8T6 + FreeRTOS + MAX3485**.  
+The firmware implements a Modbus RTU slave over half-duplex RS485, supports standard exception responses, maintains runtime diagnostic registers, and demonstrates safe data sharing between FreeRTOS tasks.
 
-## 1. 项目功能
+> 中文简介：这是一个基于 **STM32F103C8T6、FreeRTOS、MAX3485** 的 Modbus RTU 从机项目，用于展示 STM32 外设驱动、RS485 半双工通信、Modbus 协议处理、中断接收、CRC16、FreeRTOS 多任务以及共享数据保护等嵌入式开发能力。
 
-- STM32F103C8T6 + FreeRTOS
-- MAX3485 半双工 RS485 通信
-- USART2：9600、8 数据位、无校验、1 停止位
-- Modbus RTU 从机地址：`0x01`
-- 支持功能码：
-  - `0x03`：读取保持寄存器
-  - `0x06`：写单个保持寄存器
-- 支持标准异常响应：
-  - `0x01`：非法功能码
-  - `0x02`：非法数据地址
-  - `0x03`：非法数据值
-- Modbus CRC16 校验
-- USART2 单字节中断接收
-- 128 字节接收缓冲区
-- 通过 5 ms 总线静默时间判断一帧结束
-- FreeRTOS 独立任务周期更新动态寄存器
-- 使用临界区保护共享寄存器
-- 通过保持寄存器远程控制 PC13 板载 LED
-- USART1 输出调试日志
+---
 
-## 2. 硬件环境
+## Highlights
 
-| 模块 | 配置 |
+- STM32F103C8T6 @ 72 MHz
+- FreeRTOS / CMSIS-RTOS V1
+- MAX3485 half-duplex RS485 transceiver
+- USART2 Modbus RTU communication: **9600, 8N1**
+- USART1 debug console: **115200, 8N1**
+- Modbus slave address: **0x01**
+- Function code `0x03`: Read Holding Registers
+- Function code `0x06`: Write Single Register
+- Standard Modbus exception responses: `0x01`, `0x02`, `0x03`
+- Modbus CRC16 checking and startup CRC self-test
+- USART2 byte-by-byte interrupt reception
+- 128-byte receive buffer
+- 5 ms silent-gap frame detection
+- FreeRTOS task separation for protocol processing and device-data refresh
+- Critical sections used to protect shared holding-register data
+- Remote PC13 LED control through a holding register
+- Runtime counters for valid frames, CRC errors, exceptions and device status
+
+---
+
+## System Architecture
+
+```mermaid
+flowchart LR
+    PC[Modbus Master / PC] <-->|RS485 A/B| MAX[MAX3485]
+    MAX <-->|USART2 + PB0 EN| MCU[STM32F103C8T6]
+
+    subgraph Firmware
+        IRQ[USART2 RX Interrupt]
+        BUF[RS485 RX Buffer]
+        SYS[SystemTask\nNormal Priority]
+        MB[Modbus Slave\n03 / 06 / Exception]
+        REG[Holding Registers]
+        DATA[DeviceDataTask\nLow Priority]
+        DBG[USART1 Debug Log]
+    end
+
+    MCU --> IRQ
+    IRQ --> BUF
+    BUF --> SYS
+    SYS --> MB
+    MB <--> REG
+    DATA --> REG
+    SYS --> DBG
+```
+
+### Runtime flow
+
+```mermaid
+sequenceDiagram
+    participant Master as Modbus Master
+    participant IRQ as USART2 IRQ
+    participant Buffer as RS485 Buffer
+    participant Task as SystemTask
+    participant Modbus as Modbus Slave
+
+    Master->>IRQ: Send RTU request bytes
+    IRQ->>Buffer: Store one byte per RX interrupt
+    Note over Buffer: 5 ms without new byte = frame complete
+    Task->>Buffer: RS485_ReadFrame()
+    Task->>Task: CRC16 check
+    Task->>Modbus: Process function code
+    Modbus-->>Task: Build normal / exception response
+    Task-->>Master: RS485 response
+```
+
+---
+
+## Hardware
+
+| Item | Configuration |
 |---|---|
 | MCU | STM32F103C8T6 |
-| 系统时钟 | 72 MHz |
+| System clock | 72 MHz |
 | RTOS | FreeRTOS / CMSIS-RTOS V1 |
-| RS485 收发器 | MAX3485，3.3 V 供电 |
-| 调试串口 | USART1，115200，8N1 |
-| Modbus 串口 | USART2，9600，8N1 |
-| 状态 LED | PC13，低电平点亮 |
-| RS485 方向控制 | PB0 |
+| RS485 transceiver | MAX3485, 3.3 V |
+| Debug UART | USART1, 115200, 8N1 |
+| Modbus UART | USART2, 9600, 8N1 |
+| Status LED | PC13, active low |
+| RS485 direction control | PB0 |
 
-## 3. 接线
+### Wiring
 
 ```text
-STM32 PA2  -> MAX3485 RXD
-STM32 PA3  -> MAX3485 TXD
+STM32 PA2  -> MAX3485 RXD / DI path used by module
+STM32 PA3  -> MAX3485 TXD / RO path used by module
 STM32 PB0  -> MAX3485 EN
 STM32 3.3V -> MAX3485 VCC
 STM32 GND  -> MAX3485 GND
@@ -53,162 +110,140 @@ MAX3485 B   -> USB-RS485 B
 MAX3485 GND -> USB-RS485 GND
 ```
 
-注意：
+> The exact DI/RO silk-screen naming can vary between MAX3485 modules. Follow the signal direction of the module you are using.
 
-- MAX3485 使用 3.3 V 供电。
-- STM32、MAX3485 和 USB-RS485 必须共地。
-- A/B 接线端子必须压紧，接触不良会导致丢字节和误码。
-- A/B 线尽量短，并尽量使用双绞线。
+Recommended checks:
 
-## 4. 保持寄存器映射
+- Use 3.3 V supply for the MAX3485 module used in this project.
+- STM32, MAX3485 and USB-RS485 must share ground.
+- Keep A/B connections firm; poor terminal contact can cause dropped bytes and CRC errors.
+- Prefer a short twisted pair for A/B during bench testing.
 
-| 地址 | 名称 | 读写属性 | 含义 |
+---
+
+## FreeRTOS Task Design
+
+| Task | Priority | Stack | Responsibility |
+|---|---:|---:|---|
+| `SystemTask` | Normal | 256 | Read completed RS485 frames, validate CRC, process Modbus requests, send responses and print debug logs |
+| `DeviceDataTask` | Low | 128 | Refresh uptime, LED actual state and device-status register once per second |
+
+Shared holding-register data is accessed inside FreeRTOS critical sections where atomic multi-register updates are required.
+
+---
+
+## Holding Register Map
+
+| Address | Name | Access | Description |
 |---:|---|---|---|
-| 0 | Uptime Seconds | 只读 | 系统运行秒数的低 16 位 |
-| 1 | Valid Frame Count | 只读 | CRC 正确且发送给本机的报文数量 |
-| 2 | CRC Error Count | 只读 | CRC 错误报文数量 |
-| 3 | LED Control | 读写 | `0` 关闭 LED，`1` 点亮 LED |
-| 4 | LED Actual State | 只读 | LED 实际状态 |
-| 5 | Last Function Code | 只读 | 最近记录的 Modbus 功能码 |
-| 6 | Exception Count | 只读 | 已生成的异常响应数量 |
-| 7 | Device Status | 只读 | 设备综合状态位 |
+| 0 | Uptime Seconds | RO | Low 16 bits of device uptime in seconds |
+| 1 | Valid Frame Count | RO | CRC-valid frames addressed to this slave |
+| 2 | CRC Error Count | RO | Number of received frames with CRC errors |
+| 3 | LED Control | RW | `0` = LED off, `1` = LED on |
+| 4 | LED Actual State | RO | Actual PC13 LED state |
+| 5 | Last Function Code | RO | Most recently recorded Modbus function code |
+| 6 | Exception Count | RO | Number of generated Modbus exception responses |
+| 7 | Device Status | RO | Combined device status bit field |
 
-### 设备状态寄存器
+### Device-status bits
 
-| 位 | 掩码 | 含义 |
+| Bit | Mask | Meaning |
 |---:|---:|---|
-| bit0 | `0x0001` | 设备正在运行 |
-| bit1 | `0x0002` | LED 实际点亮 |
-| bit2 | `0x0004` | 至少收到过一条有效帧 |
-| bit3 | `0x0008` | 曾经出现 CRC 错误 |
-| bit4 | `0x0010` | 曾经生成异常响应 |
+| bit0 | `0x0001` | Device is running |
+| bit1 | `0x0002` | LED is actually on |
+| bit2 | `0x0004` | At least one valid frame has been received |
+| bit3 | `0x0008` | A CRC error has occurred |
+| bit4 | `0x0010` | An exception response has been generated |
 
-状态位使用按位或组合，例如：
+Example:
 
 ```text
 0x0001 | 0x0004 = 0x0005
 ```
 
-表示设备正在运行，并且已经收到过有效帧。
+`0x0005` means the device is running and has received at least one valid frame.
 
-## 5. 软件结构
+---
 
-```text
-Core/
-├─ Inc/
-│  ├─ modbus_crc.h
-│  ├─ modbus_slave.h
-│  └─ rs485.h
-└─ Src/
-   ├─ modbus_crc.c
-   ├─ modbus_slave.c
-   ├─ rs485.c
-   └─ freertos.c
-```
+## Modbus Request Processing
 
-### `rs485.c`
+### Function `0x03` — Read Holding Registers
 
-负责：
+The slave validates:
 
-- MAX3485 收发方向切换
-- USART2 中断接收
-- 接收缓冲区管理
-- 5 ms 静默时间判帧
-- RS485 数据发送
+1. request length;
+2. register quantity;
+3. start address;
+4. requested address range;
+5. response-buffer capacity.
 
-### `modbus_crc.c`
+The selected registers are copied while task switching is temporarily blocked so one Modbus response observes a consistent register snapshot.
 
-负责：
+### Function `0x06` — Write Single Register
 
-- Modbus CRC16 计算
-- 接收报文 CRC 校验
+The writable control point in this demo is the LED-control register. Invalid addresses or invalid values are returned as standard Modbus exception responses.
 
-### `modbus_slave.c`
+### Exception responses
 
-负责：
+| Exception | Code | Meaning |
+|---|---:|---|
+| Illegal Function | `0x01` | Unsupported Modbus function |
+| Illegal Data Address | `0x02` | Requested register address is outside the valid map |
+| Illegal Data Value | `0x03` | Request length, quantity or value is invalid |
 
-- 保持寄存器映射
-- 功能码 `0x03`
-- 功能码 `0x06`
-- 标准异常响应
-- LED 控制
-- 动态统计数据
-- 设备状态位
-- 共享寄存器临界区保护
+---
 
-### `freertos.c`
+## Test Frames
 
-负责：
+### Read all 8 holding registers
 
-- `SystemTask`：读取 RS485 帧、校验 CRC、处理 Modbus 请求并发送响应
-- `DeviceDataTask`：每秒更新运行时间、LED 实际状态和设备状态
-
-## 6. 测试指令
-
-### 读取 8 个保持寄存器
-
-发送：
+Request:
 
 ```text
 01 03 00 00 00 08 44 0C
 ```
 
-正常响应格式：
+Response format:
 
 ```text
-01 03 10 [16 字节寄存器数据] [CRC 低字节] [CRC 高字节]
+01 03 10 [16 bytes register data] [CRC Lo] [CRC Hi]
 ```
 
-### 点亮 LED
-
-发送：
+### Turn LED on
 
 ```text
 01 06 00 03 00 01 B8 0A
 ```
 
-正常响应原样回显：
+Expected response: request frame echoed back.
 
-```text
-01 06 00 03 00 01 B8 0A
-```
-
-### 关闭 LED
-
-发送：
+### Turn LED off
 
 ```text
 01 06 00 03 00 00 79 CA
 ```
 
-正常响应原样回显：
+Expected response: request frame echoed back.
 
-```text
-01 06 00 03 00 00 79 CA
-```
+### CRC error test
 
-### CRC 错误测试
-
-发送故意写错 CRC 的报文：
+Send a deliberately incorrect CRC:
 
 ```text
 01 03 00 00 00 08 44 0D
 ```
 
-从机应丢弃该报文、不返回响应，并将 CRC 错误计数加 1。
+Expected behavior:
 
-## 7. 编译与运行
+- no Modbus response;
+- CRC error counter increments;
+- device-status CRC-error bit becomes set.
 
-1. 使用 STM32CubeIDE 打开工程。
-2. 确认芯片型号为 STM32F103C8T6。
-3. 确认系统时钟为 72 MHz。
-4. 编译工程。
-5. 使用 ST-Link 下载程序。
-6. USART1 连接串口助手，配置为 115200、8N1。
-7. USB-RS485 连接 USART2 对应的 MAX3485 总线。
-8. Modbus 主机配置为 9600、8N1、RTU、从机地址 1。
+---
 
-## 8. 运行日志示例
+## Debug Output
+
+USART1 is used as a lightweight diagnostic console.
 
 ```text
 [BOOT] Modbus functions 03/06 slave started
@@ -220,24 +255,101 @@ Core/
 [MODBUS] TX OK
 ```
 
-## 9. 项目结果
+This makes communication faults easier to separate into reception, CRC, protocol and transmission stages.
 
-项目已完成以下验证：
+---
 
-- 功能码 `0x03` 正常读取
-- 功能码 `0x06` 正常写入并控制 LED
-- 异常码 `0x01`、`0x02`、`0x03` 正常返回
-- CRC 错误报文能够被识别并丢弃
-- 动态寄存器能够周期更新
-- 连续 20 次自动轮询测试通过
-- LED 控制值与实际状态保持一致
-- A/B 接线端子压紧后通信稳定
+## Project Structure
 
-## 10. 后续可扩展方向
+```text
+STM32F103-FreeRTOS-Modbus-RTU/
+├── Core/
+│   ├── Inc/
+│   │   ├── modbus_crc.h
+│   │   ├── modbus_slave.h
+│   │   └── rs485.h
+│   └── Src/
+│       ├── modbus_crc.c
+│       ├── modbus_slave.c
+│       ├── rs485.c
+│       └── freertos.c
+├── Drivers/
+├── Middlewares/
+├── MDK-ARM/
+├── ModbusRTUTerminal.ioc
+├── .gitignore
+└── README.md
+```
 
-- 增加看门狗
-- 增加 UART 错误自动恢复
-- 增加功能码 `0x10`
-- 增加传感器数据映射
-- 增加 Flash 参数保存
-- 增加上位机监控界面
+### Main modules
+
+- `rs485.c` — MAX3485 direction switching, USART2 interrupt reception, frame buffering and RS485 transmission.
+- `modbus_crc.c` — Modbus CRC16 calculation and frame validation.
+- `modbus_slave.c` — register map, function codes `0x03` / `0x06`, exception responses, counters, status and LED control.
+- `freertos.c` — RTOS task creation, protocol-processing loop, periodic device-data update and debug logging.
+
+---
+
+## Build and Run
+
+### Keil MDK-ARM
+
+1. Open `MDK-ARM/ModbusRTUTerminal.uvprojx` in Keil MDK-ARM.
+2. Build the project.
+3. Flash the STM32F103C8T6 with ST-Link.
+4. Connect USART1 to a serial terminal at `115200 8N1`.
+5. Connect USART2 through the MAX3485 to a USB-RS485 adapter.
+6. Configure the Modbus master as `9600 8N1`, RTU mode, slave address `1`.
+
+### STM32CubeMX
+
+Open `ModbusRTUTerminal.ioc` to inspect or regenerate the peripheral and FreeRTOS configuration. Review user-code sections before regenerating code.
+
+---
+
+## Verified Behaviors
+
+The current project has been used to verify:
+
+- `0x03` holding-register reads;
+- `0x06` single-register writes and LED control;
+- exception codes `0x01`, `0x02`, `0x03`;
+- CRC-error rejection and error counting;
+- periodic dynamic-register updates;
+- repeated polling communication;
+- consistency between LED control and actual LED-state feedback.
+
+---
+
+## What This Project Demonstrates
+
+This repository is intentionally small, but it covers several practical embedded-software topics:
+
+- STM32 HAL peripheral configuration
+- UART interrupt reception
+- half-duplex RS485 direction control
+- Modbus RTU frame parsing
+- CRC16 implementation
+- protocol exception handling
+- FreeRTOS task design
+- shared-data synchronization
+- embedded diagnostic logging
+- hardware/software integration and communication debugging
+
+---
+
+## Roadmap
+
+- [ ] Add watchdog and communication recovery
+- [ ] Add UART error callback and automatic RX restart
+- [ ] Add Modbus function `0x10` (Write Multiple Registers)
+- [ ] Map real sensor data into holding/input registers
+- [ ] Add Flash-backed parameter storage
+- [ ] Add a PC monitoring/configuration tool
+- [ ] Add hardware photos, wiring diagram and protocol-test screenshots
+
+---
+
+## 中文说明
+
+这个仓库主要作为嵌入式项目作品集使用。项目重点不是简单调用 Modbus 库，而是把 **RS485 接收、帧边界判断、CRC 校验、协议解析、异常响应、FreeRTOS 任务以及运行状态统计** 拆分成清晰模块，便于后续继续扩展传感器、参数存储和上位机功能。
