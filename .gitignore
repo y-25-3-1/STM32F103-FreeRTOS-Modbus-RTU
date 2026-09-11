@@ -6,6 +6,31 @@ Build/
 Objects/
 Listings/
 
+# Keil MDK build outputs and local state
+MDK-ARM/**/Objects/
+MDK-ARM/**/Listings/
+MDK-ARM/**/DebugConfig/
+MDK-ARM/**/*.crf
+MDK-ARM/**/*.d
+MDK-ARM/**/*.dep
+MDK-ARM/**/*.lnp
+MDK-ARM/**/*.map
+MDK-ARM/**/*.htm
+MDK-ARM/**/*.html
+MDK-ARM/**/*.build_log.htm
+MDK-ARM/**/*.axf
+MDK-ARM/**/*.hex
+MDK-ARM/**/*.bin
+MDK-ARM/**/*.o
+MDK-ARM/**/*.obj
+MDK-ARM/**/*.lst
+MDK-ARM/**/*.sct
+MDK-ARM/**/*.uvguix.*
+MDK-ARM/**/*.uvoptx
+
+# Keep the Keil project definition
+!MDK-ARM/**/*.uvprojx
+
 # Compiled files
 *.o
 *.obj
@@ -21,6 +46,9 @@ Listings/
 *.hex
 *.srec
 *.out
+*.crf
+*.dep
+*.lnp
 
 # Temporary and log files
 *.log
@@ -41,7 +69,7 @@ desktop.ini
 # Local launch/debug files
 *.launch
 
-# Keep STM32CubeIDE project configuration
+# Keep STM32CubeIDE / CubeMX project configuration
 !.project
 !.cproject
 !.mxproject
